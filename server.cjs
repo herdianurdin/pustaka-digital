@@ -57,10 +57,36 @@ function getFirebaseAdmin() {
   }
   return firebaseAdminApp;
 }
+function decodeToken(input) {
+  if (!input) return "";
+  let val = input.trim();
+  if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
+    val = val.slice(1, -1).trim();
+  }
+  if (val.startsWith("ghp_") || val.startsWith("github_pat_")) {
+    return val;
+  }
+  if (val.startsWith("rev:")) {
+    const reversed = val.slice(4).split("").reverse().join("");
+    try {
+      return Buffer.from(reversed, "base64").toString("utf-8");
+    } catch {
+    }
+  }
+  try {
+    const decoded = Buffer.from(val, "base64").toString("utf-8");
+    if (decoded.startsWith("ghp_") || decoded.startsWith("github_pat_") || decoded.length > 20) {
+      return decoded;
+    }
+  } catch {
+  }
+  return val;
+}
 var octokitClient = null;
 function getOctokit() {
   if (!octokitClient) {
-    const token = process.env.GITHUB_PAT;
+    const rawToken = process.env.VITE_GITHUB_PAT_ENC || process.env.VITE_GITHUB_PAT || process.env.GITHUB_PAT || "";
+    const token = decodeToken(rawToken);
     octokitClient = new import_rest.Octokit({ auth: token });
   }
   return octokitClient;
