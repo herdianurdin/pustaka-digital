@@ -84,8 +84,15 @@ async function startServer() {
   const PORT = 3e3;
   app.use((0, import_cors.default)());
   app.use(import_express.default.json());
+  app.use((req, res, next) => {
+    console.log(`[DEBUG] Incoming request: ${req.method} ${req.url}`);
+    next();
+  });
   const upload = (0, import_multer.default)({ storage: import_multer.default.memoryStorage() });
-  app.post("/api/upload", upload.single("file"), async (req, res) => {
+  const baseUrl = process.env.VITE_BASE_URL || "/pustaka-digital/";
+  const basePath = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const apiRouter = import_express.default.Router();
+  apiRouter.post("/upload", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file provided" });
@@ -133,7 +140,7 @@ async function startServer() {
       res.status(500).json({ error: "Failed to upload file to GitHub", details: error.message });
     }
   });
-  app.post("/api/delete-file", async (req, res) => {
+  apiRouter.post("/delete-file", async (req, res) => {
     try {
       const { filePath } = req.body;
       if (!filePath) {
@@ -199,10 +206,10 @@ async function startServer() {
       res.status(500).json({ error: "Failed to delete file from GitHub", details: error.message });
     }
   });
-  app.get("/api/health", (req, res) => {
+  apiRouter.get("/health", (req, res) => {
     res.json({ status: "ok" });
   });
-  app.post("/api/users/:uid/password", async (req, res) => {
+  apiRouter.post("/users/:uid/password", async (req, res) => {
     try {
       const { uid } = req.params;
       const { password } = req.body;
@@ -224,7 +231,7 @@ async function startServer() {
       res.status(500).json({ error: errorMessage });
     }
   });
-  app.post("/api/users/:uid/delete", async (req, res) => {
+  apiRouter.post("/users/:uid/delete", async (req, res) => {
     try {
       const { uid } = req.params;
       const adminApp = getFirebaseAdmin();
@@ -238,7 +245,11 @@ async function startServer() {
       res.status(500).json({ error: error.message });
     }
   });
-  const baseUrl = process.env.VITE_BASE_URL || "/pustaka-digital/";
+  app.use("/api", apiRouter);
+  app.use("/pustaka-digital/api", apiRouter);
+  if (basePath && basePath !== "/pustaka-digital") {
+    app.use(`${basePath}/api`, apiRouter);
+  }
   app.get("/", (req, res, next) => {
     if (baseUrl !== "/" && req.path === "/") {
       return res.redirect(baseUrl);
@@ -257,10 +268,17 @@ async function startServer() {
       app.use(baseUrl, import_express.default.static(distPath));
     }
     app.use(import_express.default.static(distPath));
-    app.get("*all", (req, res) => {
+    app.get("*", (req, res) => {
       res.sendFile(import_path.default.join(distPath, "index.html"));
     });
   }
+  app.use((req, res, next) => {
+    if (req.path.includes("/api/")) {
+      res.status(404).json({ error: `API Route not found: ${req.method} ${req.path}` });
+    } else {
+      next();
+    }
+  });
   app.use((err, req, res, next) => {
     console.error("Express global error handler caught:", err);
     if (res.headersSent) {
